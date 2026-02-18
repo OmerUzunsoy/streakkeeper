@@ -92,6 +92,7 @@ Komutlar:
 - `/yardim`
 - `/panel` (tiklik menu)
 - `/durum`
+- `/streak` (uygun aksiyonu secip streak korur)
 - `/mesgul 2 Toplantilar`
 - `/kapat`
 - `/tick Acil guncelleme`
@@ -104,6 +105,7 @@ Not:
 - Kurulumda ilk `/start` chat'i kaydeder ve diger chat'leri reddeder.
 - Proje guncellemesi taklidi yerine gercek, izlenebilir bakim kaydi olusturur.
 - `/panel` ve hizli klavye ile teknik bilgi olmadan da kullanilabilir.
+- `Streak Koru` butonu, bugun commit yoksa uygun islemi tek tikta uygular.
 
 ### Yardim Menusu
 

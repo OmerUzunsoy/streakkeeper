@@ -56,6 +56,7 @@ HELP_TEXT = (
     "- /kapat: Mesgul modunu kapatir.\n"
     "- /tick [not]: Bugunluk streak commit aksiyonu.\n"
     "- /bakim [not]: Bakim snapshot commit/push aksiyonu.\n"
+    "- /streak: Uygun ise tek hamlede streak korur.\n"
     "- /hatirlat HH:MM: Gunluk uyari saatini ayarlar.\n"
     "- /hatirlat-ac / /hatirlat-kapat: Uyarii ac/kapat.\n"
     "- /chatid: Bu sohbetin kimligini gosterir.\n\n"
@@ -102,6 +103,8 @@ COMMAND_ALIASES = {
     "hatirlat-ac": "/reminder_on",
     "/hatirlat-kapat": "/reminder_off",
     "hatirlat-kapat": "/reminder_off",
+    "/streak": "/streak",
+    "streak": "/streak",
 }
 
 CALLBACK_PREFIX = "act:"
@@ -115,6 +118,7 @@ CB_REMINDER_ON = f"{CALLBACK_PREFIX}reminder_on"
 CB_REMINDER_OFF = f"{CALLBACK_PREFIX}reminder_off"
 CB_REMINDER_2130 = f"{CALLBACK_PREFIX}reminder_2130"
 CB_PANEL = f"{CALLBACK_PREFIX}panel"
+CB_STREAK = f"{CALLBACK_PREFIX}streak"
 
 
 def load_json(path: Path, default: Dict) -> Dict:
@@ -221,7 +225,7 @@ def main_keyboard() -> Dict:
         "keyboard": [
             ["/panel", "/durum"],
             ["/mesgul 1", "/kapat"],
-            ["/tick", "/bakim"],
+            ["/streak", "/tick", "/bakim"],
             ["/hatirlat 21:30", "/yardim"],
         ],
         "resize_keyboard": True,
@@ -239,6 +243,7 @@ def panel_keyboard(cfg: Dict) -> Dict:
     return {
         "inline_keyboard": [
             [
+                {"text": "Streak Koru", "callback_data": CB_STREAK},
                 {"text": "Durum", "callback_data": CB_STATUS},
                 {"text": "Tick", "callback_data": CB_TICK},
                 {"text": "Bakim", "callback_data": CB_MAINTAIN},
@@ -344,6 +349,18 @@ def run_action(action: str, cfg: Dict) -> str:
         code, out = run_streakkeeper(["maintain", "--note", str(note)])
         return out or ("Bakim calisti." if code == 0 else "Bakim hatali.")
 
+    if action == "streak":
+        if has_commit_today():
+            return "Bugun zaten commit var. Ek islem yapilmadi."
+        streak_status = load_streak_status()
+        if streak_status.get("busy_until"):
+            code, out = run_streakkeeper(["tick"])
+            if code == 0 and "Skip:" not in out:
+                return out or "Streak koruma: tick uygulandi."
+        note = cfg.get("default_maintenance_note", "Gun sonu bakim")
+        code, out = run_streakkeeper(["maintain", "--note", str(note)])
+        return out or ("Streak koruma: bakim commit'i uygulandi." if code == 0 else "Streak koruma hatali.")
+
     if action == "reminder_on":
         cfg["reminder_enabled"] = True
         save_json(BOT_CONFIG_PATH, cfg)
@@ -383,6 +400,9 @@ def run_command(cmd: str, args: List[str], cfg: Dict, chat_id: str) -> str:
 
     if cmd == "/status":
         return run_action("status", cfg)
+
+    if cmd == "/streak":
+        return run_action("streak", cfg)
 
     if cmd == "/busy":
         if not args:
@@ -452,6 +472,7 @@ def run_command(cmd: str, args: List[str], cfg: Dict, chat_id: str) -> str:
 
 def callback_to_action(data: str) -> str:
     mapping = {
+        CB_STREAK: "streak",
         CB_STATUS: "status",
         CB_TICK: "tick",
         CB_MAINTAIN: "maintain",
