@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -27,6 +27,9 @@ DEFAULT_BOT_CONFIG = {
     "poll_timeout_seconds": 20,
     "reminder_enabled": True,
     "reminder_text": "Bugun bu repoda commit gorunmuyor. Streak riskte olabilir.",
+    "default_busy_days": 1,
+    "default_busy_note": "Yogun mod",
+    "default_maintenance_note": "Gun sonu bakim",
 }
 
 DEFAULT_BOT_STATE = {
@@ -41,34 +44,24 @@ def log(msg: str) -> None:
 
 
 HELP_TEXT = (
-    "Streak Bot Yardim Menusu\n\n"
-    "Amac:\n"
-    "- Gun sonuna dogru commit yoksa seni uyarmak\n"
-    "- Telegram uzerinden bakim komutu calistirmak\n\n"
+    "Streak Bot - Kolay Kullanim\n\n"
+    "Hizli Baslangic:\n"
+    "1) /start\n"
+    "2) /panel (butonlu menu)\n"
+    "3) /durum\n\n"
     "Temel Komutlar:\n"
-    "/yardim veya /help\n"
-    "  Tanim: Bu menuyu gosterir.\n\n"
-    "/durum veya /status\n"
-    "  Tanim: Bugunku commit var mi, repo durumu ne gosterir.\n\n"
-    "/mesgul <gun> [not] veya /busy <days> [note]\n"
-    "  Tanim: N gun boyunca streak koruma modunu ac.\n"
-    "  Ornek: /mesgul 2 Toplantilar yogun\n\n"
-    "/kapat veya /off\n"
-    "  Tanim: Mesgul modunu kapat.\n\n"
-    "/tick [not]\n"
-    "  Tanim: Gerekiyorsa bugunluk streak commit isini calistir.\n"
-    "  Ornek: /tick Gun sonu kontrol\n\n"
-    "/bakim [not] veya /maintain [note]\n"
-    "  Tanim: Kucuk bir bakim snapshot'i commit/push yapar.\n"
-    "  Ornek: /bakim Gun sonu repo snapshot\n\n"
-    "/hatirlat HH:MM veya /setreminder HH:MM\n"
-    "  Tanim: Gunluk uyari saatini ayarla (24 saat formati).\n"
-    "  Ornek: /hatirlat 22:15\n\n"
-    "/chatid\n"
-    "  Tanim: Aktif chat kimligini gosterir.\n\n"
+    "- /panel: Butonlu hizli menu acar.\n"
+    "- /durum: Anlik repo durumunu gosterir.\n"
+    "- /mesgul <gun> [not]: Mesgul modunu acar.\n"
+    "- /kapat: Mesgul modunu kapatir.\n"
+    "- /tick [not]: Bugunluk streak commit aksiyonu.\n"
+    "- /bakim [not]: Bakim snapshot commit/push aksiyonu.\n"
+    "- /hatirlat HH:MM: Gunluk uyari saatini ayarlar.\n"
+    "- /hatirlat-ac / /hatirlat-kapat: Uyarii ac/kapat.\n"
+    "- /chatid: Bu sohbetin kimligini gosterir.\n\n"
     "Not:\n"
-    "- Bot sadece kayitli chat'ten komut kabul eder.\n"
-    "- Ilk kurulumda /start gonderen chat otomatik kayit edilir."
+    "- Bot sadece yetkili sohbetten komut kabul eder.\n"
+    "- Ilk /start mesajini atan sohbet otomatik yetkilenir."
 )
 
 COMMAND_ALIASES = {
@@ -103,7 +96,25 @@ COMMAND_ALIASES = {
     "hatirlat": "/setreminder",
     "/chatid": "/chatid",
     "chatid": "/chatid",
+    "/panel": "/panel",
+    "panel": "/panel",
+    "/hatirlat-ac": "/reminder_on",
+    "hatirlat-ac": "/reminder_on",
+    "/hatirlat-kapat": "/reminder_off",
+    "hatirlat-kapat": "/reminder_off",
 }
+
+CALLBACK_PREFIX = "act:"
+CB_STATUS = f"{CALLBACK_PREFIX}status"
+CB_TICK = f"{CALLBACK_PREFIX}tick"
+CB_MAINTAIN = f"{CALLBACK_PREFIX}maintain"
+CB_BUSY_1 = f"{CALLBACK_PREFIX}busy1"
+CB_BUSY_3 = f"{CALLBACK_PREFIX}busy3"
+CB_OFF = f"{CALLBACK_PREFIX}off"
+CB_REMINDER_ON = f"{CALLBACK_PREFIX}reminder_on"
+CB_REMINDER_OFF = f"{CALLBACK_PREFIX}reminder_off"
+CB_REMINDER_2130 = f"{CALLBACK_PREFIX}reminder_2130"
+CB_PANEL = f"{CALLBACK_PREFIX}panel"
 
 
 def load_json(path: Path, default: Dict) -> Dict:
@@ -185,15 +196,76 @@ class TelegramClient:
             raise RuntimeError(f"Telegram API error: {payload}")
         return payload
 
-    def send_message(self, chat_id: str, text: str) -> None:
-        self.call("sendMessage", {"chat_id": chat_id, "text": text})
+    def send_message(self, chat_id: str, text: str, reply_markup: Dict = None) -> None:
+        params: Dict[str, str] = {"chat_id": chat_id, "text": text}
+        if reply_markup:
+            params["reply_markup"] = json.dumps(reply_markup, separators=(",", ":"))
+        self.call("sendMessage", params)
+
+    def answer_callback(self, callback_query_id: str, text: str = "") -> None:
+        params = {"callback_query_id": callback_query_id}
+        if text:
+            params["text"] = text
+        self.call("answerCallbackQuery", params)
 
     def get_updates(self, offset: int, timeout: int) -> List[Dict]:
         payload = self.call(
             "getUpdates",
-            {"offset": offset, "timeout": timeout, "allowed_updates": '["message"]'},
+            {"offset": offset, "timeout": timeout, "allowed_updates": '["message","callback_query"]'},
         )
         return payload.get("result", [])
+
+
+def main_keyboard() -> Dict:
+    return {
+        "keyboard": [
+            ["/panel", "/durum"],
+            ["/mesgul 1", "/kapat"],
+            ["/tick", "/bakim"],
+            ["/hatirlat 21:30", "/yardim"],
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False,
+    }
+
+
+def panel_keyboard(cfg: Dict) -> Dict:
+    reminder_enabled = bool(cfg.get("reminder_enabled", True))
+    reminder_toggle_button = (
+        {"text": "Hatirlatma Kapat", "callback_data": CB_REMINDER_OFF}
+        if reminder_enabled
+        else {"text": "Hatirlatma Ac", "callback_data": CB_REMINDER_ON}
+    )
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "Durum", "callback_data": CB_STATUS},
+                {"text": "Tick", "callback_data": CB_TICK},
+                {"text": "Bakim", "callback_data": CB_MAINTAIN},
+            ],
+            [
+                {"text": "Mesgul 1 Gun", "callback_data": CB_BUSY_1},
+                {"text": "Mesgul 3 Gun", "callback_data": CB_BUSY_3},
+                {"text": "Mesgul Kapat", "callback_data": CB_OFF},
+            ],
+            [
+                {"text": "Hatirlat 21:30", "callback_data": CB_REMINDER_2130},
+                reminder_toggle_button,
+            ],
+            [
+                {"text": "Paneli Yenile", "callback_data": CB_PANEL},
+            ],
+        ]
+    }
+
+
+def panel_text(cfg: Dict) -> str:
+    return (
+        "Streak Bot Kontrol Paneli\n"
+        "Asagidaki butonlardan tek tik ile islem yapabilirsin.\n"
+        f"- Hatirlatma: {'Acik' if cfg.get('reminder_enabled', True) else 'Kapali'}\n"
+        f"- Saat: {int(cfg.get('reminder_hour', 21)):02d}:{int(cfg.get('reminder_minute', 30)):02d}"
+    )
 
 
 def load_streak_status() -> Dict:
@@ -245,27 +317,89 @@ def parse_command(text: str) -> Tuple[str, List[str]]:
     return cmd, parts[1:]
 
 
+def run_action(action: str, cfg: Dict) -> str:
+    if action == "status":
+        return format_status_text()
+
+    if action == "busy1":
+        note = cfg.get("default_busy_note", "Yogun mod")
+        code, out = run_streakkeeper(["busy", "--days", "1", "--note", str(note)])
+        return out or ("Mesgul modu 1 gun acildi." if code == 0 else "Mesgul modu acilamadi.")
+
+    if action == "busy3":
+        note = cfg.get("default_busy_note", "Yogun mod")
+        code, out = run_streakkeeper(["busy", "--days", "3", "--note", str(note)])
+        return out or ("Mesgul modu 3 gun acildi." if code == 0 else "Mesgul modu acilamadi.")
+
+    if action == "off":
+        code, out = run_streakkeeper(["off"])
+        return out or ("Mesgul modu kapatildi." if code == 0 else "Mesgul modu kapatilamadi.")
+
+    if action == "tick":
+        code, out = run_streakkeeper(["tick"])
+        return out or ("Tick calisti." if code == 0 else "Tick hatali.")
+
+    if action == "maintain":
+        note = cfg.get("default_maintenance_note", "Gun sonu bakim")
+        code, out = run_streakkeeper(["maintain", "--note", str(note)])
+        return out or ("Bakim calisti." if code == 0 else "Bakim hatali.")
+
+    if action == "reminder_on":
+        cfg["reminder_enabled"] = True
+        save_json(BOT_CONFIG_PATH, cfg)
+        return "Hatirlatma acildi."
+
+    if action == "reminder_off":
+        cfg["reminder_enabled"] = False
+        save_json(BOT_CONFIG_PATH, cfg)
+        return "Hatirlatma kapatildi."
+
+    if action == "reminder_2130":
+        cfg["reminder_hour"] = 21
+        cfg["reminder_minute"] = 30
+        cfg["reminder_enabled"] = True
+        save_json(BOT_CONFIG_PATH, cfg)
+        return "Hatirlatma saati 21:30 olarak ayarlandi."
+
+    if action == "panel":
+        return panel_text(cfg)
+
+    return "Bilinmeyen islem."
+
+
 def run_command(cmd: str, args: List[str], cfg: Dict, chat_id: str) -> str:
-    if cmd in ("/start", "/help"):
+    if cmd == "/start":
+        return (
+            "Bot aktif. Hos geldin.\n"
+            "Hizli kullanim icin /panel yaz ve butonlardan sec.\n\n"
+            + HELP_TEXT
+        )
+
+    if cmd in ("/help",):
         return HELP_TEXT
 
+    if cmd == "/panel":
+        return panel_text(cfg)
+
     if cmd == "/status":
-        return format_status_text()
+        return run_action("status", cfg)
 
     if cmd == "/busy":
         if not args:
-            return "Kullanim: /busy <days> [note]"
+            days = str(max(int(cfg.get("default_busy_days", 1)), 1))
+            note = str(cfg.get("default_busy_note", "Yogun mod"))
+            code, out = run_streakkeeper(["busy", "--days", days, "--note", note])
+            return out or (f"Mesgul modu {days} gun acildi." if code == 0 else "Mesgul modu acilamadi.")
         days = args[0]
         note = " ".join(args[1:]).strip()
         cmd_args = ["busy", "--days", days]
         if note:
             cmd_args.extend(["--note", note])
         code, out = run_streakkeeper(cmd_args)
-        return out or ("Busy ayarlandi." if code == 0 else "Busy ayarlanamadi.")
+        return out or ("Mesgul ayarlandi." if code == 0 else "Mesgul ayarlanamadi.")
 
     if cmd == "/off":
-        code, out = run_streakkeeper(["off"])
-        return out or ("Busy kapatildi." if code == 0 else "Busy kapatilamadi.")
+        return run_action("off", cfg)
 
     if cmd == "/tick":
         note = " ".join(args).strip()
@@ -280,8 +414,10 @@ def run_command(cmd: str, args: List[str], cfg: Dict, chat_id: str) -> str:
         cmd_args = ["maintain"]
         if note:
             cmd_args.extend(["--note", note])
+        else:
+            cmd_args.extend(["--note", str(cfg.get("default_maintenance_note", "Gun sonu bakim"))])
         code, out = run_streakkeeper(cmd_args)
-        return out or ("Maintenance calisti." if code == 0 else "Maintenance hatali.")
+        return out or ("Bakim calisti." if code == 0 else "Bakim hatali.")
 
     if cmd == "/setreminder":
         if len(args) != 1 or ":" not in args[0]:
@@ -298,16 +434,55 @@ def run_command(cmd: str, args: List[str], cfg: Dict, chat_id: str) -> str:
             return "Saat formati hatali."
         cfg["reminder_hour"] = h
         cfg["reminder_minute"] = m
+        cfg["reminder_enabled"] = True
         save_json(BOT_CONFIG_PATH, cfg)
         return f"Hatirlatma saati {h:02d}:{m:02d} olarak guncellendi."
+
+    if cmd == "/reminder_on":
+        return run_action("reminder_on", cfg)
+
+    if cmd == "/reminder_off":
+        return run_action("reminder_off", cfg)
 
     if cmd == "/chatid":
         return f"Bu sohbetin chat_id degeri: {chat_id}"
 
-    return "Bilinmeyen komut. /yardim yazarak tum komutlari gorebilirsin."
+    return "Bilinmeyen komut. /panel veya /yardim yaz."
 
 
-def handle_update(client: TelegramClient, update: Dict, cfg: Dict) -> None:
+def callback_to_action(data: str) -> str:
+    mapping = {
+        CB_STATUS: "status",
+        CB_TICK: "tick",
+        CB_MAINTAIN: "maintain",
+        CB_BUSY_1: "busy1",
+        CB_BUSY_3: "busy3",
+        CB_OFF: "off",
+        CB_REMINDER_ON: "reminder_on",
+        CB_REMINDER_OFF: "reminder_off",
+        CB_REMINDER_2130: "reminder_2130",
+        CB_PANEL: "panel",
+    }
+    return mapping.get(data, "")
+
+
+def authorize_chat(chat_id: str, cmd: str, cfg: Dict) -> Tuple[bool, bool]:
+    allowed = str(cfg.get("allowed_chat_id", "")).strip()
+    bind_on_start = bool(cfg.get("auto_bind_chat_on_start", True))
+    bound_now = False
+    if not allowed:
+        if bind_on_start and cmd == "/start":
+            cfg["allowed_chat_id"] = chat_id
+            save_json(BOT_CONFIG_PATH, cfg)
+            bound_now = True
+            return True, bound_now
+        return False, bound_now
+    if allowed != chat_id:
+        return False, bound_now
+    return True, bound_now
+
+
+def handle_message_update(client: TelegramClient, update: Dict, cfg: Dict) -> None:
     msg = update.get("message") or {}
     chat = msg.get("chat") or {}
     chat_id = str(chat.get("id", ""))
@@ -319,30 +494,50 @@ def handle_update(client: TelegramClient, update: Dict, cfg: Dict) -> None:
     if not cmd:
         return
 
-    allowed = str(cfg.get("allowed_chat_id", "")).strip()
-    bind_on_start = bool(cfg.get("auto_bind_chat_on_start", True))
-    bound_now = False
-
-    if not allowed:
-        if bind_on_start and cmd == "/start":
-            cfg["allowed_chat_id"] = chat_id
-            save_json(BOT_CONFIG_PATH, cfg)
-            allowed = chat_id
-            bound_now = True
-            log(f"Allowed chat auto-bound: {chat_id}")
+    authorized, bound_now = authorize_chat(chat_id, cmd, cfg)
+    if not authorized:
+        if str(cfg.get("allowed_chat_id", "")).strip():
+            client.send_message(chat_id, "Yetkisiz chat.")
         else:
             client.send_message(chat_id, "Ilk kurulum icin /start komutunu gonder.")
-            return
-
-    if allowed and chat_id != allowed:
-        client.send_message(chat_id, "Yetkisiz chat.")
         return
 
     response = run_command(cmd, args, cfg, chat_id)
     if bound_now:
+        log(f"Allowed chat auto-bound: {chat_id}")
         response = f"Bu chat bot yonetimi icin kaydedildi (chat_id={chat_id}).\n\n{response}"
-    client.send_message(chat_id, response)
+    inline = panel_keyboard(cfg) if cmd in ("/start", "/help", "/panel") else None
+    client.send_message(chat_id, response, reply_markup=inline)
+    if cmd in ("/start", "/help", "/panel"):
+        client.send_message(chat_id, "Hizli komut klavyesi aktif.", reply_markup=main_keyboard())
     log(f"Command handled: cmd={cmd} chat_id={chat_id}")
+
+
+def handle_callback_update(client: TelegramClient, update: Dict, cfg: Dict) -> None:
+    cb = update.get("callback_query") or {}
+    callback_id = str(cb.get("id", ""))
+    data = str(cb.get("data", ""))
+    msg = cb.get("message") or {}
+    chat = msg.get("chat") or {}
+    chat_id = str(chat.get("id", ""))
+    if not callback_id or not chat_id:
+        return
+
+    authorized, _ = authorize_chat(chat_id, "/panel", cfg)
+    if not authorized:
+        client.answer_callback(callback_id, "Yetkisiz istek.")
+        return
+
+    action = callback_to_action(data)
+    if not action:
+        client.answer_callback(callback_id, "Bilinmeyen buton.")
+        return
+
+    client.answer_callback(callback_id, "Islem alindi.")
+    response = run_action(action, cfg)
+    inline = panel_keyboard(cfg)
+    client.send_message(chat_id, response, reply_markup=inline)
+    log(f"Callback handled: action={action} chat_id={chat_id}")
 
 
 def run_loop() -> int:
@@ -373,14 +568,17 @@ def run_loop() -> int:
                 if upd_id >= offset:
                     offset = upd_id + 1
                 state["last_update_id"] = upd_id
-                handle_update(client, upd, cfg)
+                if upd.get("message"):
+                    handle_message_update(client, upd, cfg)
+                elif upd.get("callback_query"):
+                    handle_callback_update(client, upd, cfg)
 
             if is_reminder_due(cfg, state):
                 chat_id = str(cfg.get("allowed_chat_id", "")).strip()
                 if chat_id:
                     text = cfg.get("reminder_text", DEFAULT_BOT_CONFIG["reminder_text"])
-                    extra = "\nKomutlar: /status /tick /maintain"
-                    client.send_message(chat_id, f"{text}{extra}")
+                    extra = "\nHizli erisim: /panel /durum /tick /bakim"
+                    client.send_message(chat_id, f"{text}{extra}", reply_markup=panel_keyboard(cfg))
                     state["last_reminder_date"] = date.today().isoformat()
                     log(f"Reminder sent to chat_id={chat_id}")
 

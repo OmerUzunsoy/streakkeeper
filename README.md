@@ -53,7 +53,7 @@ Her gun saat 14:00'te kontrol etmek icin:
 ## Telegram Bot
 
 `telegram_streak_bot.py` su isi yapar:
-- Telegram'dan komut alir (`/yardim`, `/durum`, `/mesgul`, `/tick`, `/bakim`).
+- Telegram'dan komut alir ve butonlu panel sunar (`/panel`).
 - Aksam belirledigin saatte commit yoksa uyari mesaji yollar.
 
 ### 1) Bot token al
@@ -90,6 +90,7 @@ chmod +x telegram_streak_bot.py
 
 Komutlar:
 - `/yardim`
+- `/panel` (tiklik menu)
 - `/durum`
 - `/mesgul 2 Toplantilar`
 - `/kapat`
@@ -102,11 +103,13 @@ Not:
 - Bu bot sadece bu repository icinde islem yapar.
 - Kurulumda ilk `/start` chat'i kaydeder ve diger chat'leri reddeder.
 - Proje guncellemesi taklidi yerine gercek, izlenebilir bakim kaydi olusturur.
+- `/panel` ve hizli klavye ile teknik bilgi olmadan da kullanilabilir.
 
 ### Yardim Menusu
 
 Bot icinde `/yardim` yazinca detayli ve ornekli menu gelir. Ingilizce komutlar da calisir:
 - `/help` = `/yardim`
+- `/panel` = `/panel`
 - `/status` = `/durum`
 - `/busy` = `/mesgul`
 - `/off` = `/kapat`
