@@ -1,0 +1,53 @@
+name: Deploy Bot To Oracle VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-oracle-vm
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH (git pull + pm2 restart)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.ORACLE_DEPLOY_PATH }}
+          DEPLOY_REMOTE: ${{ secrets.ORACLE_DEPLOY_REMOTE }}
+          DEPLOY_BRANCH: ${{ secrets.ORACLE_DEPLOY_BRANCH }}
+          PM2_APP_NAME: ${{ secrets.ORACLE_PM2_APP_NAME }}
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          port: ${{ secrets.ORACLE_PORT }}
+          script_stop: true
+          envs: DEPLOY_PATH,DEPLOY_REMOTE,DEPLOY_BRANCH,PM2_APP_NAME
+          script: |
+            set -e
+
+            if [ -z "$DEPLOY_PATH" ]; then
+              echo "ORACLE_DEPLOY_PATH secret is required."
+              exit 1
+            fi
+
+            if [ -z "$DEPLOY_REMOTE" ]; then
+              DEPLOY_REMOTE="origin"
+            fi
+
+            if [ -z "$DEPLOY_BRANCH" ]; then
+              DEPLOY_BRANCH="main"
+            fi
+
+            if [ -z "$PM2_APP_NAME" ]; then
+              PM2_APP_NAME="telegram-streak-bot"
+            fi
+
+            cd "$DEPLOY_PATH"
+            chmod +x ./guncelle.sh
+            ./guncelle.sh --path "$DEPLOY_PATH" --remote "$DEPLOY_REMOTE" --branch "$DEPLOY_BRANCH" --app "$PM2_APP_NAME"

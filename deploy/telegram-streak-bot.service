@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Streak Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/streakkeeper
+ExecStart=/usr/bin/python3 /home/ubuntu/streakkeeper/telegram_streak_bot.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

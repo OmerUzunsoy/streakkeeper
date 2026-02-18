@@ -1,0 +1,10 @@
+{
+  "busy_until": null,
+  "busy_note": "Busy mode",
+  "heartbeat_file": "streak-heartbeat.md",
+  "remote": "origin",
+  "branch": "",
+  "commit_prefix": "chore(streak)",
+  "maintenance_file": ".streakkeeper/project-maintenance.md",
+  "maintenance_prefix": "chore(maintenance)"
+}

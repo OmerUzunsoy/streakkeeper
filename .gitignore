@@ -1,0 +1,5 @@
+__pycache__/
+.streakkeeper/bot_state.json
+.streakkeeper/telegram.json
+.idea/
+*.iml
