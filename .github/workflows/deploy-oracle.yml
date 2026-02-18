@@ -50,4 +50,4 @@ jobs:
 
             cd "$DEPLOY_PATH"
             chmod +x ./guncelle.sh
-            ./guncelle.sh --path "$DEPLOY_PATH" --remote "$DEPLOY_REMOTE" --branch "$DEPLOY_BRANCH" --app "$PM2_APP_NAME"
+            ./guncelle.sh --path "$DEPLOY_PATH" --remote "$DEPLOY_REMOTE" --branch "$DEPLOY_BRANCH" --app "$PM2_APP_NAME" --allow-dirty
