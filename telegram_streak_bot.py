@@ -30,11 +30,15 @@ DEFAULT_BOT_CONFIG = {
     "default_busy_days": 1,
     "default_busy_note": "Yogun mod",
     "default_maintenance_note": "Gun sonu bakim",
+    "auto_streak_enabled": False,
+    "auto_streak_hour": 22,
+    "auto_streak_minute": 45,
 }
 
 DEFAULT_BOT_STATE = {
     "last_update_id": 0,
     "last_reminder_date": None,
+    "last_auto_streak_date": None,
 }
 
 
@@ -57,6 +61,8 @@ HELP_TEXT = (
     "- /tick [not]: Bugunluk streak commit aksiyonu.\n"
     "- /bakim [not]: Bakim snapshot commit/push aksiyonu.\n"
     "- /streak: Uygun ise tek hamlede streak korur.\n"
+    "- /otomatik-ac / /otomatik-kapat: Otomatik streak modunu ac/kapat.\n"
+    "- /otomatik-saat HH:MM: Otomatik streak saatini ayarlar.\n"
     "- /hatirlat HH:MM: Gunluk uyari saatini ayarlar.\n"
     "- /hatirlat-ac / /hatirlat-kapat: Uyarii ac/kapat.\n"
     "- /chatid: Bu sohbetin kimligini gosterir.\n\n"
@@ -105,6 +111,12 @@ COMMAND_ALIASES = {
     "hatirlat-kapat": "/reminder_off",
     "/streak": "/streak",
     "streak": "/streak",
+    "/otomatik-ac": "/auto_on",
+    "otomatik-ac": "/auto_on",
+    "/otomatik-kapat": "/auto_off",
+    "otomatik-kapat": "/auto_off",
+    "/otomatik-saat": "/auto_time",
+    "otomatik-saat": "/auto_time",
 }
 
 CALLBACK_PREFIX = "act:"
@@ -119,6 +131,8 @@ CB_REMINDER_OFF = f"{CALLBACK_PREFIX}reminder_off"
 CB_REMINDER_2130 = f"{CALLBACK_PREFIX}reminder_2130"
 CB_PANEL = f"{CALLBACK_PREFIX}panel"
 CB_STREAK = f"{CALLBACK_PREFIX}streak"
+CB_AUTO_ON = f"{CALLBACK_PREFIX}auto_on"
+CB_AUTO_OFF = f"{CALLBACK_PREFIX}auto_off"
 
 
 def load_json(path: Path, default: Dict) -> Dict:
@@ -258,6 +272,10 @@ def panel_keyboard(cfg: Dict) -> Dict:
                 reminder_toggle_button,
             ],
             [
+                {"text": "Oto Streak Ac", "callback_data": CB_AUTO_ON},
+                {"text": "Oto Streak Kapat", "callback_data": CB_AUTO_OFF},
+            ],
+            [
                 {"text": "Paneli Yenile", "callback_data": CB_PANEL},
             ],
         ]
@@ -269,7 +287,9 @@ def panel_text(cfg: Dict) -> str:
         "Streak Bot Kontrol Paneli\n"
         "Asagidaki butonlardan tek tik ile islem yapabilirsin.\n"
         f"- Hatirlatma: {'Acik' if cfg.get('reminder_enabled', True) else 'Kapali'}\n"
-        f"- Saat: {int(cfg.get('reminder_hour', 21)):02d}:{int(cfg.get('reminder_minute', 30)):02d}"
+        f"- Hatirlatma Saati: {int(cfg.get('reminder_hour', 21)):02d}:{int(cfg.get('reminder_minute', 30)):02d}\n"
+        f"- Oto Streak: {'Acik' if cfg.get('auto_streak_enabled', False) else 'Kapali'}\n"
+        f"- Oto Streak Saati: {int(cfg.get('auto_streak_hour', 22)):02d}:{int(cfg.get('auto_streak_minute', 45)):02d}"
     )
 
 
@@ -292,6 +312,19 @@ def is_reminder_due(bot_cfg: Dict, bot_state: Dict) -> bool:
     if (now.hour, now.minute) < (h, m):
         return False
     if bot_state.get("last_reminder_date") == date.today().isoformat():
+        return False
+    return not has_commit_today()
+
+
+def is_auto_streak_due(bot_cfg: Dict, bot_state: Dict) -> bool:
+    if not bot_cfg.get("auto_streak_enabled", False):
+        return False
+    now = datetime.now()
+    h = int(bot_cfg.get("auto_streak_hour", 22))
+    m = int(bot_cfg.get("auto_streak_minute", 45))
+    if (now.hour, now.minute) < (h, m):
+        return False
+    if bot_state.get("last_auto_streak_date") == date.today().isoformat():
         return False
     return not has_commit_today()
 
@@ -377,6 +410,16 @@ def run_action(action: str, cfg: Dict) -> str:
         cfg["reminder_enabled"] = True
         save_json(BOT_CONFIG_PATH, cfg)
         return "Hatirlatma saati 21:30 olarak ayarlandi."
+
+    if action == "auto_on":
+        cfg["auto_streak_enabled"] = True
+        save_json(BOT_CONFIG_PATH, cfg)
+        return "Otomatik streak modu acildi."
+
+    if action == "auto_off":
+        cfg["auto_streak_enabled"] = False
+        save_json(BOT_CONFIG_PATH, cfg)
+        return "Otomatik streak modu kapatildi."
 
     if action == "panel":
         return panel_text(cfg)
@@ -467,6 +510,31 @@ def run_command(cmd: str, args: List[str], cfg: Dict, chat_id: str) -> str:
     if cmd == "/chatid":
         return f"Bu sohbetin chat_id degeri: {chat_id}"
 
+    if cmd == "/auto_on":
+        return run_action("auto_on", cfg)
+
+    if cmd == "/auto_off":
+        return run_action("auto_off", cfg)
+
+    if cmd == "/auto_time":
+        if len(args) != 1 or ":" not in args[0]:
+            return "Kullanim: /otomatik-saat HH:MM (ornek: /otomatik-saat 22:45)"
+        hm = args[0].split(":")
+        if len(hm) != 2:
+            return "Kullanim: /otomatik-saat HH:MM"
+        hour, minute = hm
+        if not (hour.isdigit() and minute.isdigit()):
+            return "Saat formati hatali."
+        h = int(hour)
+        m = int(minute)
+        if h < 0 or h > 23 or m < 0 or m > 59:
+            return "Saat formati hatali."
+        cfg["auto_streak_hour"] = h
+        cfg["auto_streak_minute"] = m
+        cfg["auto_streak_enabled"] = True
+        save_json(BOT_CONFIG_PATH, cfg)
+        return f"Otomatik streak saati {h:02d}:{m:02d} yapildi ve aktif edildi."
+
     return "Bilinmeyen komut. /panel veya /yardim yaz."
 
 
@@ -482,6 +550,8 @@ def callback_to_action(data: str) -> str:
         CB_REMINDER_ON: "reminder_on",
         CB_REMINDER_OFF: "reminder_off",
         CB_REMINDER_2130: "reminder_2130",
+        CB_AUTO_ON: "auto_on",
+        CB_AUTO_OFF: "auto_off",
         CB_PANEL: "panel",
     }
     return mapping.get(data, "")
@@ -602,6 +672,14 @@ def run_loop() -> int:
                     client.send_message(chat_id, f"{text}{extra}", reply_markup=panel_keyboard(cfg))
                     state["last_reminder_date"] = date.today().isoformat()
                     log(f"Reminder sent to chat_id={chat_id}")
+
+            if is_auto_streak_due(cfg, state):
+                chat_id = str(cfg.get("allowed_chat_id", "")).strip()
+                result = run_action("streak", cfg)
+                state["last_auto_streak_date"] = date.today().isoformat()
+                log(f"Auto streak executed: {result}")
+                if chat_id:
+                    client.send_message(chat_id, f"Otomatik streak calisti:\n{result}", reply_markup=panel_keyboard(cfg))
 
             save_json(BOT_STATE_PATH, state)
         except KeyboardInterrupt:

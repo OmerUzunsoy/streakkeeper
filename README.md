@@ -93,6 +93,9 @@ Komutlar:
 - `/panel` (tiklik menu)
 - `/durum`
 - `/streak` (uygun aksiyonu secip streak korur)
+- `/otomatik-ac` (gunluk otomatik streak ac)
+- `/otomatik-kapat` (gunluk otomatik streak kapat)
+- `/otomatik-saat 22:45` (otomatik streak saati)
 - `/mesgul 2 Toplantilar`
 - `/kapat`
 - `/tick Acil guncelleme`
@@ -106,6 +109,7 @@ Not:
 - Proje guncellemesi taklidi yerine gercek, izlenebilir bakim kaydi olusturur.
 - `/panel` ve hizli klavye ile teknik bilgi olmadan da kullanilabilir.
 - `Streak Koru` butonu, bugun commit yoksa uygun islemi tek tikta uygular.
+- Otomatik streak aciksa, belirlenen saatte commit yoksa bot kendi streak aksiyonunu calistirir.
 
 ### Yardim Menusu
 
